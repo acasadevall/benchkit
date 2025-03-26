@@ -180,12 +180,13 @@ def _generate_chart_from_df(
 def _read_csv(
     csv_pathname: PathType,
     nan_replace: bool,
+    **kwargs
 ):
     result = pd.read_csv(
         csv_pathname,
         sep=";",
         comment="#",
-        engine="python",
+        engine=kwargs.get("engine", "python"),
         keep_default_na=nan_replace,  # when True, input values "None" are interpreted as "NaN"
     )
     return result
@@ -292,6 +293,7 @@ def generate_chart_from_multiple_csvs(
 def get_global_dataframe(
     csv_pathnames: List[PathType],
     nan_replace: bool = True,
+    **kwargs
 ) -> DataFrame:
     if not _LIBRARIES_ENABLED:
         _print_warning()
@@ -300,7 +302,7 @@ def get_global_dataframe(
     dataframes = [
         df
         for p in csv_pathnames
-        if (df := _read_csv(csv_pathname=p, nan_replace=nan_replace)) is not None
+        if (df := _read_csv(csv_pathname=p, nan_replace=nan_replace, engine=kwargs.get("engine", "python"))) is not None
     ]
     result = pd.concat(dataframes)
     return result
@@ -310,6 +312,7 @@ def generate_global_csv_file(
     csv_pathnames: List[PathType],
     output_dir: PathType = "/tmp/figs",
     nan_replace: bool = True,
+    **kwargs
 ) -> None:
     if not _LIBRARIES_ENABLED:
         _print_warning()
@@ -317,6 +320,6 @@ def generate_global_csv_file(
 
     ts = _generate_timestamp().replace("-", "_")
     output_file = pathlib.Path(output_dir) / f"benchmark_{ts}.csv"
-    global_dataframe = get_global_dataframe(csv_pathnames=csv_pathnames, nan_replace=nan_replace)
+    global_dataframe = get_global_dataframe(csv_pathnames=csv_pathnames, nan_replace=nan_replace, engine=kwargs.get("engine", "python"))
     global_dataframe.to_csv(path_or_buf=output_file, sep=";", index=False)
     print(f'[INFO] Saving campaigns common CSV file in "{output_file}"')

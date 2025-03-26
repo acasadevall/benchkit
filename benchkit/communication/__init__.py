@@ -19,7 +19,7 @@ from shutil import which
 from typing import Dict, Iterable, List, Optional
 
 from benchkit.communication.utils import command_with_env, remote_shell_command
-from benchkit.shell.shell import pipe_shell_out, shell_out
+from benchkit.shell.shell import pipe_shell_out, shell_out, shell_interactive
 from benchkit.utils.types import Command, Environment, PathType, SplitCommand
 
 
@@ -710,6 +710,8 @@ class SSHCommLayer(CommunicationLayer):
         self._ssh_host_info = self._get_ssh_info(host=host)
         self._in_ssh_config = self._is_in_ssh_config(host=host)
 
+        self._check_if_ssh_key_exists(host=host)
+
     @property
     def remote_host(self) -> str | None:
         return self._host
@@ -947,6 +949,46 @@ class SSHCommLayer(CommunicationLayer):
         ]
 
         return full_command
+
+    @staticmethod
+    def _check_if_ssh_key_exists(host: str) -> bool:
+        def __wrap_shell(command: str, is_interactive: bool = False, ignore_any_error_code: bool = False) -> str:
+            import shlex
+            if is_interactive:
+                return shell_interactive(command=shlex.split(command), print_input=True)
+            else:
+                return shell_out(command=shlex.split(command), print_input=False, print_output=False, ignore_any_error_code=ignore_any_error_code)
+
+        ret = False
+        # seems there is no way to get status from `shell_out`, so only output txt is used
+        output = __wrap_shell(f"ssh -o BatchMode=yes {str(host)} \"echo exists\"", ignore_any_error_code=True).strip()
+        if output != "exists":
+            # ask for ssh-key-id
+            user_input = input(f"It seems you don't have ssh key to connect {str(host)}. Do you want to add ssh-key? [Y/n]: ").strip().lower()
+            user_accepts_ssh_key = (user_input == 'y' or user_input == '')
+            if not user_accepts_ssh_key:
+                return False
+
+            print(user_accepts_ssh_key)
+            n_retry = 5
+            while n_retry >= 0 and not ret:
+                if n_retry < 5:
+                    print(f"something went wrong. retry?? {5-n_retry}/5") # TODO: any logger?? import logging
+
+                ret = True
+                try:
+                    __wrap_shell(f"ssh-copy-id {str(host)}")
+                except Exception as e: # TODO: do proper catching instead of any exception
+                    # seems no ssh id is found, ask user to create
+                    output = __wrap_shell("ssh-keygen -t rsa -b 4096 -C \"your_email@example.com\"", is_interactive=True)
+                    n_retry -= 1
+                    ret = False
+                finally:
+                    pass
+        else:
+            ret = True
+            
+        return ret
 
     @staticmethod
     def _get_ssh_info(host: str) -> Dict[str, str]:

@@ -174,6 +174,7 @@ class Campaign:
         self,
         other_campaigns_seconds: int,
         barrier: Optional[multiprocessing.Barrier],
+        **kwargs
     ) -> None:
         """
         Run a single campaign among other campaigns in a suite.
@@ -185,7 +186,8 @@ class Campaign:
                 if needed, the barrier used to synchronize different benchmarks.
         """
         # Workaround to trunc this global file, before logging refactoring TODO
-        self._init_cmd_file()
+        is_shared = kwargs.get("is_shared", False)
+        self._init_cmd_file(is_shared=is_shared)
 
         csv_output_dir = os.path.dirname(self.csv_output_abs_path())
         os.makedirs(csv_output_dir, exist_ok=True)
@@ -196,7 +198,7 @@ class Campaign:
             barrier=barrier,
             continuing=self._continuing,
         )
-        self._move_cmd_file()
+        self._move_cmd_file(is_shared=is_shared)
 
     def run(self):
         """
@@ -268,16 +270,23 @@ class Campaign:
         if "nb_runs" not in self.parameters:
             raise ValueError('Campaign parameters dict has no "nb_runs" field.')
 
-    def _init_cmd_file(self) -> None:
+    def _init_cmd_file(self, is_shared : bool = False) -> None:
+        # just a workaround, first to start first to create the file (should be enough)
+        # otherwise skip
+        if is_shared and pathlib.Path(_BENCHKIT_CAMPAIGN_CMD_FILE).is_file():
+            return
         with open(_BENCHKIT_CAMPAIGN_CMD_FILE, "w") as f:
             header = ["#!/bin/sh", "set -e", ""]
             f.writelines(f"{line}\n" for line in header)
 
-    def _move_cmd_file(self) -> None:
+    def _move_cmd_file(self, is_shared : bool = False) -> None:
+        # just a workaround, skip always if `is_shared` is true (call _move_cmd_file once all shared campaigns finish)
+        if is_shared:
+            return
         bdd = self.base_data_dir()
         if bdd is not None:
             dst_path = pathlib.Path(bdd) / "commands.sh"
-            shutil.move(_BENCHKIT_CAMPAIGN_CMD_FILE, dst_path)
+            # shutil.move(_BENCHKIT_CAMPAIGN_CMD_FILE, dst_path)
 
 
 class CampaignSuite:
@@ -345,12 +354,17 @@ class CampaignSuite:
                 p = multiprocessing.Process(
                     target=campaign.campaign_run,
                     args=(0, barrier),
+                    kwargs={'is_shared' : True} # avoid moving files (not ownership of those is shared)
                 )
                 process_list.append(p)
                 p.start()
 
         for p in process_list:
             p.join()
+
+        if not parallel:
+            campaign0 = self._campaigns[0]
+            campaign0._move_cmd_file()
 
     def print_durations(self) -> None:
         """
@@ -432,6 +446,7 @@ class CampaignSuite:
         generate_global_csv_file(
             csv_pathnames=self.result_csv_paths,
             output_dir=output_dir,
+            engine=kwargs.get("engine", "python")
         )
 
 
