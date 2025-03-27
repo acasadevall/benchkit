@@ -439,11 +439,11 @@ class CampaignSuite:
         self,
         process_dataframe: DataframeProcessor = identical_dataframe,
         **kwargs,
-    ) -> None:
+    ) -> pathlib.Path | None:
         output_dir = pathlib.Path(os.path.commonpath(self.result_csv_paths))
         if not output_dir.is_dir():
             output_dir = output_dir.parent
-        generate_global_csv_file(
+        return generate_global_csv_file(
             csv_pathnames=self.result_csv_paths,
             output_dir=output_dir,
             engine=kwargs.get("engine", "python")

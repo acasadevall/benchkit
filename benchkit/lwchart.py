@@ -313,13 +313,20 @@ def generate_global_csv_file(
     output_dir: PathType = "/tmp/figs",
     nan_replace: bool = True,
     **kwargs
-) -> None:
+) -> pathlib.Path | None:
     if not _LIBRARIES_ENABLED:
         _print_warning()
         return
 
     ts = _generate_timestamp().replace("-", "_")
     output_file = pathlib.Path(output_dir) / f"benchmark_{ts}.csv"
-    global_dataframe = get_global_dataframe(csv_pathnames=csv_pathnames, nan_replace=nan_replace, engine=kwargs.get("engine", "python"))
-    global_dataframe.to_csv(path_or_buf=output_file, sep=";", index=False)
-    print(f'[INFO] Saving campaigns common CSV file in "{output_file}"')
+    try:
+        global_dataframe = get_global_dataframe(csv_pathnames=csv_pathnames, nan_replace=nan_replace, engine=kwargs.get("engine", "python"))
+        global_dataframe.to_csv(path_or_buf=output_file, sep=";", index=False)
+    except Exception as e:
+        print(f'[ERRROR] Error when trying to generate global csv file in "{output_file}"')
+        pass
+    finally:
+        print(f'[INFO] Saving campaigns common CSV file in "{output_file}"')
+
+    return output_file if output_file.exists() else None
