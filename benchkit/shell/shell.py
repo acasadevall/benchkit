@@ -254,6 +254,7 @@ def shell_interactive(
     print_shell_cmd: bool = False,
     print_file_shell_cmd: bool = True,
     ignore_ret_codes: Iterable[int] = (),
+    ignore_any_error_code: bool = False,
 ) -> None:
     """
     Run a shell command that is interactive (with prompts, etc.).
@@ -291,6 +292,8 @@ def shell_interactive(
             This allows to avoid an exception to be raised for commands that do not end with 0 even
             if they are successful.
             Defaults to ().
+        ignore_any_error_code (bool, optional):
+            whether to error any error code returned by the command.
 
     Raises:
         subprocess.CalledProcessError:
@@ -311,16 +314,91 @@ def shell_interactive(
         remote_host=None,
     )
 
-    process = subprocess.Popen(
+    
+    # process = subprocess.Popen(
+    #     arguments,
+    #     shell=shell,
+    #     cwd=current_dir,
+    #     # env=environment,
+    #     stdin=subprocess.PIPE,
+    #     stdout=subprocess.PIPE,
+    #     stderr=subprocess.PIPE
+    # )
+
+    arguments[1] = "-v"
+    print(f"Arguments: {arguments}")
+    import shlex
+    import select
+    import pty
+    import os
+
+    print(shlex.join(arguments))
+
+    master, slave = pty.openpty()
+
+    output, errors = ("", "")
+    with subprocess.Popen(
         arguments,
-        shell=shell,
         cwd=current_dir,
         env=environment,
-    )
-    process.wait()
-    retcode = process.poll()
+        stdin=slave, stdout=slave, stderr=slave,
+        bufsize=1,
+        # text=True,
+        universal_newlines=True) as process:
 
-    if 0 != retcode and retcode not in ignore_ret_codes:
+        output = None
+        while True:
+            try:
+                output = os.read(master, 1024).decode()
+                if not output:
+                    break
+            except OSError as e:
+                print(f"OSError: {e}")
+                break
+            except Exception as e:
+                print(f"ERROR: {e}")
+                break
+            finally:
+                print(output, end='')
+
+        # while process.poll() is None:  # While the process is running
+        #     readable, _, _ = select.select([process.stdout, process.stderr], [], [])  # Check which streams are ready
+
+        #     for stream in readable:
+        #         output = stream.readline().strip()  # Read one line
+        #         if output:
+        #             print(output)  # Print output immediately
+        
+        # while True:
+        #     print("hola")
+        #     # output = process.stdout.readline()
+        #     error = process.stderr.readline()
+        #     print("hola2")
+        #     if output == "" and process.poll() is not None:
+        #         break # if process is done, exit
+        #     if output or error:
+        #         print("[OUT-I]")
+        #         print(output.strip())
+        #         print(error.strip())
+
+        # try:
+        #     output, errors = process.communicate()
+        # except Exception as e:
+        #     print("[ERROR-I] {e}")
+        #     output, errors = process.communicate()
+        # finally:
+        #     print("status", process.returncode)
+        #     print("output", output)
+        #     print("errors", errors)
+        
+    process.wait()
+
+    retcode = process.poll()
+    print(retcode)
+    
+    
+
+    if 0 != retcode and retcode not in ignore_ret_codes and not ignore_any_error_code:
         raise subprocess.CalledProcessError(
             retcode,
             process.args,

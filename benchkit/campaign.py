@@ -186,8 +186,16 @@ class Campaign:
                 if needed, the barrier used to synchronize different benchmarks.
         """
         # Workaround to trunc this global file, before logging refactoring TODO
-        is_shared = kwargs.get("is_shared", False)
-        self._init_cmd_file(is_shared=is_shared)
+        
+        has_ext_ownership = kwargs.get("ext_ownership", False)
+        sh_command_file = _BENCHKIT_CAMPAIGN_CMD_FILE
+
+        if has_ext_ownership:
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            now_str = now.strftime("%Y%m%d_%H%M%S_%f")    
+            sh_command_file = f"{_BENCHKIT_CAMPAIGN_CMD_FILE}.{now_str}"
+
+        self._init_cmd_file(ownership={"shared" : has_ext_ownership, "cmd_file" : sh_command_file})
 
         csv_output_dir = os.path.dirname(self.csv_output_abs_path())
         os.makedirs(csv_output_dir, exist_ok=True)
@@ -198,7 +206,7 @@ class Campaign:
             barrier=barrier,
             continuing=self._continuing,
         )
-        self._move_cmd_file(is_shared=is_shared)
+        self._move_cmd_file(ownership={"shared" : has_ext_ownership, "cmd_file" : sh_command_file})
 
     def run(self):
         """
@@ -270,23 +278,35 @@ class Campaign:
         if "nb_runs" not in self.parameters:
             raise ValueError('Campaign parameters dict has no "nb_runs" field.')
 
-    def _init_cmd_file(self, is_shared : bool = False) -> None:
-        # just a workaround, first to start first to create the file (should be enough)
-        # otherwise skip
-        if is_shared and pathlib.Path(_BENCHKIT_CAMPAIGN_CMD_FILE).is_file():
-            return
-        with open(_BENCHKIT_CAMPAIGN_CMD_FILE, "w") as f:
+    def _init_cmd_file(self, ownership : dict = { "shared" : False, "cmd_file" : _BENCHKIT_CAMPAIGN_CMD_FILE }) -> None:
+        # if campaigns are composed of other campaigns (ie, CampaignSuite), ownership can be shared.
+        # In that case, we need to use a different identifier file name, otherwise filename might be overwritten
+        is_shared = ownership["shared"]
+        cmd_file = ownership["cmd_file"]
+        
+        with open(cmd_file, "w") as f:
             header = ["#!/bin/sh", "set -e", ""]
             f.writelines(f"{line}\n" for line in header)
 
-    def _move_cmd_file(self, is_shared : bool = False) -> None:
-        # just a workaround, skip always if `is_shared` is true (call _move_cmd_file once all shared campaigns finish)
-        if is_shared:
-            return
+    def _move_cmd_file(self, ownership : dict = { "shared" : False, "cmd_file" : _BENCHKIT_CAMPAIGN_CMD_FILE }) -> None:
+        # if campaigns are composed of other campaigns (ie, CampaignSuite), ownership can be shared.
+        # In that case, we need to use a different identifier file name, otherwise filename might be overwritten
+        is_shared = ownership["shared"]
+        cmd_file = ownership["cmd_file"]
+        
         bdd = self.base_data_dir()
         if bdd is not None:
             dst_path = pathlib.Path(bdd) / "commands.sh"
-            # shutil.move(_BENCHKIT_CAMPAIGN_CMD_FILE, dst_path)
+
+            try:
+                shutil.move(cmd_file, dst_path)
+            except FileNotFoundError as e:
+                print(f"FileNotFoundError/_move_cmd_file: {e}")
+            except PermissionError as e:
+                print(f"PermissionError/_move_cmd_file: {e}")
+            except Exception as e:
+                # other errors
+                print(f"Error/_move_cmd_file: {e}")
 
 
 class CampaignSuite:
@@ -297,10 +317,12 @@ class CampaignSuite:
     def __init__(
         self,
         campaigns: Iterable[Campaign],
+        external_ownership: bool = False
     ):
         self._campaigns = list(campaigns)
         self._durations = None
         self._result_csv_paths = None
+        self._external_ownership = external_ownership
 
     @property
     def result_csv_paths(self):
@@ -347,24 +369,24 @@ class CampaignSuite:
         barrier = multiprocessing.Barrier(len(self._campaigns))
 
         if not parallel:
+            # create unique `_BENCHKIT_CAMPAIGN_CMD_FILE` file
+            # now ownership is shared either due to parallel option or multiple processing required by user camapaign)
+            required_ext_ownership = self._external_ownership
+
             for campaign, remaining_seconds in zip(self._campaigns, remaining):
-                campaign.campaign_run(other_campaigns_seconds=remaining_seconds, barrier=None)
+                campaign.campaign_run(other_campaigns_seconds=remaining_seconds, barrier=None, ext_ownership=required_ext_ownership)
         else:
             for campaign in self._campaigns:
                 p = multiprocessing.Process(
                     target=campaign.campaign_run,
                     args=(0, barrier),
-                    kwargs={'is_shared' : True} # avoid moving files (not ownership of those is shared)
+                    ext_ownership=True
                 )
                 process_list.append(p)
                 p.start()
 
         for p in process_list:
             p.join()
-
-        if not parallel:
-            campaign0 = self._campaigns[0]
-            campaign0._move_cmd_file()
 
     def print_durations(self) -> None:
         """
@@ -440,9 +462,14 @@ class CampaignSuite:
         process_dataframe: DataframeProcessor = identical_dataframe,
         **kwargs,
     ) -> pathlib.Path | None:
+        # assert self.result_csv_paths == self._result_csv_paths
+        parent_folder = " ".join(kwargs.get("parent", "").strip().split()).replace(" ", "_")
         output_dir = pathlib.Path(os.path.commonpath(self.result_csv_paths))
         if not output_dir.is_dir():
             output_dir = output_dir.parent
+        output_dir = pathlib.Path(output_dir) / parent_folder
+        if parent_folder != "":
+            os.makedirs(output_dir, exist_ok=True)
         return generate_global_csv_file(
             csv_pathnames=self.result_csv_paths,
             output_dir=output_dir,

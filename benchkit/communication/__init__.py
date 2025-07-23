@@ -807,6 +807,7 @@ class SSHCommLayer(CommunicationLayer):
         output_is_log: bool = False,
         ignore_ret_codes: Iterable[int] = (),
         ignore_any_error_code: bool = False,
+        is_interactive: bool = False
     ) -> str:
         env_command = command_with_env(
             command=command,
@@ -818,17 +819,27 @@ class SSHCommLayer(CommunicationLayer):
             remote_current_dir=current_dir,
         )
 
-        output = shell_out(
-            command=full_command,
-            std_input=std_input,
-            current_dir=None,
-            print_input=print_input,
-            print_output=print_output,
-            timeout=timeout,
-            output_is_log=output_is_log,
-            ignore_ret_codes=ignore_ret_codes,
-            ignore_any_error_code=ignore_any_error_code,
-        )
+        if is_interactive:
+            output = shell_interactive(
+                command=full_command,
+                current_dir=None,
+                shell=shell,
+                print_input=True,
+                print_shell_cmd=print_output
+            )
+
+        else:
+            output = shell_out(
+                command=full_command,
+                std_input=std_input,
+                current_dir=None,
+                print_input=print_input,
+                print_output=print_output,
+                timeout=timeout,
+                output_is_log=output_is_log,
+                ignore_ret_codes=ignore_ret_codes,
+                ignore_any_error_code=ignore_any_error_code,
+            )
 
         return output
 

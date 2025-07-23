@@ -1,0 +1,50 @@
+{
+    "gpu-research-nvidia" : "ssh://username@ip:22",
+    "gpu-research-amd" : "ssh://username@ip:22",
+    "gpu-research-intel" : "ssh://username@ip:22",
+
+    "variables" : {
+        "block_size" : [1024],
+        "total_space" : [1047552],
+        "test_repetitions" : [10],
+        "shuffle_wg" : [0],
+        "shuffle_sg" : [0],
+        "wg_num" : [4,8,16,32],
+        "sg_num" : [8,16],
+        "sg_size" : [32],
+        "sg_stress_num" : [0]
+    },
+
+    "jobs" :[
+        [
+            {
+                "platform" : "gpu-research-nvidia",
+                "device" : "4060"
+            },
+            {
+                "platform" : "gpu-research-nvidia",
+                "device" : "3060"
+            },
+            {
+                "platform" : "gpu-research-nvidia",
+                "device" : "2060"
+            }
+        ],
+        [
+            {
+                "platform" : "gpu-research-amd",
+                "device" : "7800"
+            },
+            {
+                "platform" : "gpu-research-amd",
+                "device" : "6600"
+            }
+        ],
+        [
+            {
+                "platform" : "gpu-research-intel",
+                "device" : "A750"
+            }
+        ]
+    ]
+}
