@@ -208,6 +208,18 @@ class Benchmark:
         log_line(f"total_duration_pretty: {total_duration_pretty}")
 
     @staticmethod
+    def _log_extra_data(
+        output_file: IO[str],
+        extra_data: dict(),
+    ) -> None:
+        def log_line(line: str) -> None:
+            print(f"# {line}", file=output_file)
+            output_file.flush()
+        if isinstance(extra_data, dict):
+            for k,v in extra_data.items():
+                log_line(f"{k}: {v}")
+
+    @staticmethod
     def _log_prebuild_time(
         output_file: IO[str],
         prebuild_seconds: float,
@@ -1144,7 +1156,7 @@ class Benchmark:
                         header_right = [e for e in header_unsorted if e.startswith("thread_")]
                         header = sep.join(header_left + header_right)
 
-                        teeprint(content=header, file=csv_output_file)
+                        teeprint(content=header, file=csv_output_file, both=False)
                         self._first_line_is_printed = True
                         self._first_line_list = header_list
 
@@ -1156,7 +1168,7 @@ class Benchmark:
                     ]
                     line_keys = line_keys_left + line_keys_right
                     current_line = sep.join(str(experiment_results_line[key]) for key in line_keys)
-                    teeprint(content=current_line, file=csv_output_file)
+                    teeprint(content=current_line, file=csv_output_file, both=False)
 
     def _record_data_dir(
         self,

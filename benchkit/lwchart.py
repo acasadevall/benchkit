@@ -324,7 +324,7 @@ def generate_global_csv_file(
         global_dataframe = get_global_dataframe(csv_pathnames=csv_pathnames, nan_replace=nan_replace, engine=kwargs.get("engine", "python"))
         global_dataframe.to_csv(path_or_buf=output_file, sep=";", index=False)
     except Exception as e:
-        print(f'[ERRROR] Error when trying to generate global csv file in "{output_file}"')
+        print(f'[ERROR] Error when trying to generate global csv file in "{output_file}"')
         pass
     finally:
         print(f'[INFO] Saving campaigns common CSV file in "{output_file}"')

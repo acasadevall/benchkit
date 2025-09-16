@@ -1,5 +1,5 @@
 
-import atexit, termios, sys, traceback
+import atexit, termios, sys, traceback, os
 import signal
 import functools
 import shlex
@@ -43,7 +43,7 @@ def clean_up_ssh_connection(func):
             return ret
     return wrapper
     
-def reset_stty(func):
+def reset_stty(curren_stdin=sys.stdin):
     """
     Decorator to wrap terminal reset after exiting program
     Example usage: 
@@ -53,31 +53,51 @@ def reset_stty(func):
         pass
     get similar results as typing "stty sane" in terminal
     """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        def reset_terminal_settings(prev_settings):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            def reset_terminal_settings(curr_fd, prev_settings):
+                if prev_settings:
+                    try:
+                        termios.tcsetattr(curr_fd, termios.TCSANOW, prev_settings)
+                    except Exception as e:
+                        pass # ignore I/O operation on closed file when exit(0) or others
+                # and try via linux command 'stty sane'
+                try:
+                    subprocess.run(["stty", "sane"], stdin=curren_stdin, check=False)
+                except Exception:
+                    pass
+            
+            curr_fd = getattr(curren_stdin, "fileno", lambda: None)()
+            if curr_fd is not None and os.isatty(curr_fd):
+                # clean stty and terminal (similar to stty sane)
+                try:
+                    prev_settings = termios.tcgetattr(curr_fd)
+                except Exception as e:
+                    prev_settings = None
+            else:
+                prev_settings = None
+
+            # atexit.register(reset_terminal_settings, prev_settings)
+
+            ret = None
             try:
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, prev_settings)
+                ret = func(*args, **kwargs)
+                reset_terminal_settings(curr_fd, prev_settings)
+            except SttyException as e:
+                # manual call in case of other errors
+                reset_terminal_settings(curr_fd, prev_settings)
+                traceback.print_exc(file=sys.stderr)
+                pass
+                # sys.exit(0)
             except Exception as e:
-                pass # ignore I/O operation on closed file when exit(0) or others
-        
-        # clean stty and terminal (similar to stty sane)
-        prev_settings = termios.tcgetattr(sys.stdin)
-        atexit.register(reset_terminal_settings, prev_settings)
-
-        ret = None
-        try:
-            ret = func(*args, **kwargs)
-        except SttyException as e:
-            # manual call in case of other errors
-            reset_terminal_settings(prev_settings)
-            traceback.print_exc(file=sys.stderr)
-            sys.exit(0)
-        except Exception as e:
-            reset_terminal_settings(prev_settings)
-            traceback.print_exc(file=sys.stderr)
-            sys.exit(1)
-        finally:
+                reset_terminal_settings(curr_fd, prev_settings)
+                traceback.print_exc(file=sys.stderr)
+                pass
+                # sys.exit(1)
+            finally:
+                pass
+            
             return ret
-
-    return wrapper
+        return wrapper
+    return decorator

@@ -1,0 +1,3 @@
+gpu-research-nvidia =   ssh://user@ip:22
+gpu-research-amd    =   ssh://user@ip:22
+gpu-research-intel  =   ssh://user@ip:22

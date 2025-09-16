@@ -902,7 +902,7 @@ class SSHCommLayer(CommunicationLayer):
             std_input=line + "\n",
         )
 
-    def copy_from_host(self, source: PathType, destination: PathType) -> None:
+    def copy_from_host(self, source: PathType, destination: PathType, **kwargs) -> None:
         if self._in_ssh_config:
             command = ["rsync", "-azPv", str(source), f"{self._host}:{destination}"]
         else:
@@ -919,7 +919,7 @@ class SSHCommLayer(CommunicationLayer):
                 f"{user}@{hostname}:{destination}",
             ]
 
-        shell_out(command=command)
+        shell_out(command=command, **kwargs)
 
     def copy_to_host(self, source: PathType, destination: PathType) -> None:
         if self._in_ssh_config:
